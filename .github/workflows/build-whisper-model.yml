@@ -148,10 +148,20 @@ jobs:
       - name: Metadata, checksums, catalog entry, model card
         run: |
           set -euo pipefail
-          WCPP_VER=$(awk '
-            /^[[:space:]]*project[[:space:]]*\(/ && match($0, /VERSION[[:space:]]+[0-9]+\.[0-9]+\.[0-9]+/) {
-              v = substr($0, RSTART, RLENGTH); sub(/^VERSION[[:space:]]+/, "", v); print v; exit
-            }' whisper.cpp/CMakeLists.txt)
+          WCPP_VER=$(python3 - <<'PY'
+import re, pathlib
+txt = pathlib.Path("whisper.cpp/CMakeLists.txt").read_text()
+m = re.search(r'project\([^)]*VERSION\s+([0-9]+\.[0-9]+\.[0-9]+)', txt)
+if m:
+    print(m.group(1))
+else:
+    maj = re.search(r'set\(WHISPER_VERSION_MAJOR\s+([0-9]+)\)', txt)
+    min_ = re.search(r'set\(WHISPER_VERSION_MINOR\s+([0-9]+)\)', txt)
+    pat = re.search(r'set\(WHISPER_VERSION_PATCH\s+([0-9]+)\)', txt)
+    if maj and min_ and pat:
+        print(f"{maj.group(1)}.{min_.group(1)}.{pat.group(1)}")
+PY
+)
           [[ -n "$WCPP_VER" ]] || { echo "FATAL: could not determine whisper.cpp version"; exit 1; }
           WCPP_COMMIT=$(git -C whisper.cpp rev-parse HEAD)
           OPENAI_COMMIT=$(git -C openai-whisper rev-parse HEAD)
