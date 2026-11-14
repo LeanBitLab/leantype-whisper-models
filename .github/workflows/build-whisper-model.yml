@@ -284,4 +284,3 @@ jobs:
             release/vad-entry.json
             release/MODEL_CARD.md
             THIRD_PARTY_NOTICES.md
-```
