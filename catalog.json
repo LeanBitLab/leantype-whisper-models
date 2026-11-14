@@ -1,0 +1,10 @@
+{
+  "schema": 1,
+  "vad": {
+    "file": "ggml-silero-v5.1.2.bin",
+    "sha256": "",
+    "size_bytes": 0,
+    "bundled": true
+  },
+  "models": []
+}

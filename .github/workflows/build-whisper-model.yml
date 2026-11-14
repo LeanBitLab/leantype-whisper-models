@@ -1,0 +1,287 @@
+name: Build & Release LeanType Whisper Model
+
+on:
+  workflow_dispatch:
+    inputs:
+      model_name:      { description: "HF repo", required: true, default: "openai/whisper-small.en" }
+      model_revision:  { description: "HF commit SHA (40 hex)", required: true }
+      quant_type:      { description: "q5_1 | q5_0 | q8_0 | q4_0", required: true, default: "q5_1" }
+      output_prefix:   { description: "Output prefix", required: true, default: "leantype-whisper-small.en" }
+      model_version:   { description: "Catalog version (positive integer)", required: true, default: "1" }
+      languages:       { description: "Comma-separated ISO codes; first used for CI", required: true, default: "en" }
+      whisper_cpp_ref: { description: "whisper.cpp commit SHA (40 hex)", required: true }
+      openai_ref:      { description: "openai/whisper commit SHA (40 hex)", required: true }
+      publish_release: { description: "Publish GitHub Release", type: boolean, required: true, default: false }
+
+concurrency:
+  group: build-${{ inputs.output_prefix }}-${{ inputs.quant_type }}
+  cancel-in-progress: false
+
+permissions: { contents: read }
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      MODEL_NAME:      ${{ inputs.model_name }}
+      MODEL_REVISION:  ${{ inputs.model_revision }}
+      QUANT_TYPE:      ${{ inputs.quant_type }}
+      OUTPUT_PREFIX:   ${{ inputs.output_prefix }}
+      MODEL_VERSION:   ${{ inputs.model_version }}
+      MODEL_LANGS:     ${{ inputs.languages }}
+      WCPP_REF:        ${{ inputs.whisper_cpp_ref }}
+      OPENAI_REF:      ${{ inputs.openai_ref }}
+      VAD_REVISION:    ${{ vars.VAD_REVISION }}
+      VAD_SHA256:      ${{ vars.VAD_SHA256 }}
+      HF_HUB_DISABLE_TELEMETRY: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate inputs and repo vars
+        run: |
+          set -euo pipefail
+          [[ "$MODEL_REVISION" =~ ^[0-9a-f]{40}$ ]] || { echo "model_revision must be 40-hex"; exit 1; }
+          [[ "$WCPP_REF"       =~ ^[0-9a-f]{40}$ ]] || { echo "whisper_cpp_ref must be 40-hex"; exit 1; }
+          [[ "$OPENAI_REF"     =~ ^[0-9a-f]{40}$ ]] || { echo "openai_ref must be 40-hex"; exit 1; }
+          [[ "$OUTPUT_PREFIX"  =~ ^[a-z0-9._-]+$ ]] || { echo "bad output_prefix"; exit 1; }
+          [[ "$QUANT_TYPE"     =~ ^q[458]_[01]$  ]] || { echo "bad quant_type"; exit 1; }
+          [[ "$MODEL_VERSION"  =~ ^[1-9][0-9]*$  ]] || { echo "bad model_version"; exit 1; }
+          [[ "$MODEL_LANGS"    =~ ^[a-z]{2,3}(,[a-z]{2,3})*$ ]] || { echo "bad languages"; exit 1; }
+          [[ "${VAD_REVISION:-}" =~ ^[0-9a-f]{40}$ ]] || { echo "set VAD_REVISION repo var"; exit 1; }
+          [[ "${VAD_SHA256:-}"   =~ ^[0-9a-f]{64}$ ]] || { echo "set VAD_SHA256 repo var"; exit 1; }
+
+      - uses: actions/checkout@v4
+        with: { repository: ggml-org/whisper.cpp, ref: "${{ inputs.whisper_cpp_ref }}", path: whisper.cpp }
+      - uses: actions/checkout@v4
+        with: { repository: openai/whisper, ref: "${{ inputs.openai_ref }}", path: openai-whisper }
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11", cache: pip }
+
+      - name: Install CPU Python deps
+        run: |
+          set -euo pipefail
+          python -m pip install -r requirements.txt
+          python -c "import torch; assert torch.version.cuda is None, torch.__version__; print(torch.__version__)"
+          pip freeze > pip-freeze.txt
+
+      - name: Download checkpoint + license gate
+        run: |
+          set -euo pipefail
+          mkdir -p ./meta
+          python - <<'PY'
+          import json, os, pathlib, yaml
+          from huggingface_hub import snapshot_download
+          repo, rev = os.environ["MODEL_NAME"], os.environ["MODEL_REVISION"]
+          snapshot_download(
+              repo_id=repo, revision=rev, local_dir="./hf_model",
+              allow_patterns=["README.md","config.json","generation_config.json","vocab.json",
+                              "added_tokens.json","tokenizer*.json","special_tokens_map.json",
+                              "preprocessor_config.json","model.safetensors","pytorch_model.bin"],
+          )
+          p = pathlib.Path("./hf_model/README.md")
+          text = p.read_text(encoding="utf-8") if p.exists() else ""
+          parts = text.split("---", 2)
+          meta = yaml.safe_load(parts[1]) if text.startswith("---") and len(parts) >= 3 else {}
+          meta = meta if isinstance(meta, dict) else {}
+          raw = meta.get("license") or "unknown"
+          lics = [raw.lower()] if isinstance(raw, str) else [str(x).lower() for x in raw]
+
+          ALLOW = {"mit","apache-2.0","bsd-3-clause","cc0-1.0"}
+          attribution = ""
+          if len(lics) == 1 and lics[0] in ALLOW:
+              lic = lics[0]
+          else:
+              ov = json.loads(pathlib.Path("models.json").read_text()).get("overrides", {}) \
+                   if pathlib.Path("models.json").exists() else {}
+              entry = ov.get(f"{repo}@{rev}")
+              if not entry:
+                  raise SystemExit(f"FATAL: license {lics!r} requires an explicit models.json "
+                                   f"override for {repo}@{rev}")
+              lic = str(entry["license"]).lower()
+              attribution = entry.get("attribution", "").strip()
+              if "-nc" in lic:
+                  raise SystemExit(f"FATAL: non-commercial license {lic!r} is never redistributable")
+              if lic.startswith("cc-by") and not attribution:
+                  raise SystemExit("FATAL: CC-BY override requires attribution text")
+              print(f"license override applied by {entry.get('approved_by','?')}: {entry.get('rationale','')}")
+
+          pathlib.Path("./meta/license.txt").write_text(lic + "\n")
+          pathlib.Path("./meta/attribution.txt").write_text(attribution + "\n")
+          print("license:", lic)
+          PY
+
+      - name: Build whisper.cpp
+        run: |
+          set -euo pipefail
+          cmake -S ./whisper.cpp -B ./whisper.cpp/build \
+            -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF \
+            -DWHISPER_BUILD_TESTS=OFF -DWHISPER_BUILD_EXAMPLES=ON -DGGML_NATIVE=OFF
+          cmake --build ./whisper.cpp/build -j"$(nproc)"
+
+      - name: Convert + quantize
+        run: |
+          set -euo pipefail
+          chmod +x scripts/*.sh
+          ./scripts/convert_and_quantize.sh ./hf_model ./openai-whisper ./whisper.cpp \
+            ./converted "./release/${OUTPUT_PREFIX}-${QUANT_TYPE}.bin" "$QUANT_TYPE"
+
+      - name: Fetch pinned VAD model
+        run: |
+          set -euo pipefail
+          curl -fsSL -o ./ggml-silero-v5.1.2.bin \
+            "https://huggingface.co/ggml-org/whisper-vad/resolve/${VAD_REVISION}/ggml-silero-v5.1.2.bin"
+          echo "${VAD_SHA256}  ./ggml-silero-v5.1.2.bin" | sha256sum -c -
+
+      - name: Validate
+        run: |
+          set -euo pipefail
+          CLI=./whisper.cpp/build/bin/whisper-cli
+          [[ -x "$CLI" ]] || CLI=./whisper.cpp/build/bin/main
+          PRIMARY_LANG="${MODEL_LANGS%%,*}"
+          SAMPLES_DIR="./samples/$PRIMARY_LANG"
+          [[ -f "$SAMPLES_DIR/expected-transcripts.txt" ]] || { echo "FATAL: no sample set for $PRIMARY_LANG"; exit 1; }
+          ./scripts/validate_model.sh "$CLI" \
+            "./release/${OUTPUT_PREFIX}-${QUANT_TYPE}.bin" "$SAMPLES_DIR" "$PRIMARY_LANG" \
+            ./converted/ggml-model.bin ./ggml-silero-v5.1.2.bin 4
+
+      - name: Metadata, checksums, catalog entry, model card
+        run: |
+          set -euo pipefail
+          WCPP_VER=$(awk '
+            /^[[:space:]]*project[[:space:]]*\(/ && match($0, /VERSION[[:space:]]+[0-9]+\.[0-9]+\.[0-9]+/) {
+              v = substr($0, RSTART, RLENGTH); sub(/^VERSION[[:space:]]+/, "", v); print v; exit
+            }' whisper.cpp/CMakeLists.txt)
+          [[ -n "$WCPP_VER" ]] || { echo "FATAL: could not determine whisper.cpp version"; exit 1; }
+          WCPP_COMMIT=$(git -C whisper.cpp rev-parse HEAD)
+          OPENAI_COMMIT=$(git -C openai-whisper rev-parse HEAD)
+
+          cd release
+          sha256sum ./*.bin > SHA256SUMS.txt
+          {
+            echo "base_model=$MODEL_NAME"
+            echo "model_revision=$MODEL_REVISION"
+            echo "quant_type=$QUANT_TYPE"
+            echo "model_version=$MODEL_VERSION"
+            echo "languages=$MODEL_LANGS"
+            echo "license=$(cat ../meta/license.txt)"
+            echo "whisper_cpp_version=$WCPP_VER"
+            echo "min_runtime_version=$WCPP_VER"
+            echo "whisper_cpp_commit=$WCPP_COMMIT"
+            echo "openai_whisper_commit=$OPENAI_COMMIT"
+            echo "vad_model=ggml-silero-v5.1.2.bin"
+            echo "vad_revision=$VAD_REVISION"
+            echo "vad_sha256=$VAD_SHA256"
+            cat ../converted/SIZES.txt
+            echo "build_date_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo "--- pip freeze ---"; cat ../pip-freeze.txt
+            echo "--- compiler ---"; cc --version | head -n1
+          } > BUILD_INFO.txt
+
+          WCPP_VER="$WCPP_VER" WCPP_COMMIT="$WCPP_COMMIT" python - <<'PY'
+          import hashlib, json, os, pathlib, textwrap
+          prefix, quant, ver = os.environ["OUTPUT_PREFIX"], os.environ["QUANT_TYPE"], os.environ["MODEL_VERSION"]
+          repo = os.environ["GITHUB_REPOSITORY"]
+          mid, name = f"{prefix}-{quant}", f"{prefix}-{quant}.bin"
+          data = pathlib.Path(name).read_bytes()
+          sha = hashlib.sha256(data).hexdigest()
+          lic = pathlib.Path("../meta/license.txt").read_text().strip()
+          attr = pathlib.Path("../meta/attribution.txt").read_text().strip()
+          wcv, wcc = os.environ["WCPP_VER"], os.environ["WCPP_COMMIT"]
+
+          entry = {
+            "id": mid, "version": int(ver), "file": name,
+            "url": f"https://github.com/{repo}/releases/download/{mid}-v{ver}/{name}",
+            "sha256": sha, "size_bytes": len(data),
+            "base_model": os.environ["MODEL_NAME"],
+            "model_revision": os.environ["MODEL_REVISION"],
+            "quant_type": quant,
+            "languages": os.environ["MODEL_LANGS"].split(","),
+            "license": lic, "attribution": attr,
+            "whisper_cpp_commit": wcc,
+            "min_runtime_version": wcv,
+          }
+          pathlib.Path("catalog-entry.json").write_text(json.dumps(entry, indent=2) + "\n")
+
+          v = pathlib.Path("../ggml-silero-v5.1.2.bin").read_bytes()
+          pathlib.Path("vad-entry.json").write_text(json.dumps({
+            "file": "ggml-silero-v5.1.2.bin",
+            "revision": os.environ["VAD_REVISION"],
+            "sha256": hashlib.sha256(v).hexdigest(),
+            "size_bytes": len(v), "bundled": True,
+          }, indent=2) + "\n")
+
+          bpath = pathlib.Path(f"../bench/{mid}.json")
+          b = json.loads(bpath.read_text()) if bpath.exists() else {}
+          g = lambda k: b.get(k, "PENDING (device bench)")
+          card = textwrap.dedent(f"""\
+          # Model Card: `{name}`
+
+          - **Model ID:** `{mid}` (v{ver})
+          - **Base Model:** `{entry['base_model']}` (`{entry['model_revision']}`)
+          - **Quantization:** `{quant}`
+          - **Size:** {len(data):,} bytes ({len(data)/(1024*1024):.1f} MiB)
+          - **SHA-256:** `{sha}`
+          - **Languages:** {", ".join(entry['languages'])}
+          - **License:** `{lic}` (verified from the pinned upstream model card)
+          - **Built with whisper.cpp:** `{wcv}` (`{wcc}`)
+          - **Minimum Runtime Version:** `{wcv}`
+          - **Intended Use:** Offline voice typing in LeanType (`:voice` isolated process).
+
+          ## Attribution
+          {attr or "Upstream OpenAI Whisper weights (MIT); see THIRD_PARTY_NOTICES.md."}
+
+          ## Device Benchmarks
+          - **Peak Private_Dirty RAM:** {g('peak_private_dirty_kb')} kB
+          - **Cold Load Time:** {g('cold_load_ms')} ms
+          - **RTF:** {g('rtf')}
+          - **Device / SoC / threads:** {g('device')} / {g('soc')} / {g('threads')}
+          """)
+          pathlib.Path("MODEL_CARD.md").write_text(card)
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.output_prefix }}-${{ inputs.quant_type }}
+          path: |
+            release/*.bin
+            release/SHA256SUMS.txt
+            release/BUILD_INFO.txt
+            release/catalog-entry.json
+            release/vad-entry.json
+            release/MODEL_CARD.md
+
+  publish:
+    needs: build
+    if: ${{ github.event.inputs.publish_release == 'true' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions: { contents: write }
+    steps:
+      - uses: actions/checkout@v4
+      - name: Require device benchmarks
+        run: |
+          set -euo pipefail
+          B="bench/${{ inputs.output_prefix }}-${{ inputs.quant_type }}.json"
+          [[ -f "$B" ]] || { echo "FATAL: $B missing  -  run the on-device bench first"; exit 1; }
+      - uses: actions/download-artifact@v4
+        with: { name: "${{ inputs.output_prefix }}-${{ inputs.quant_type }}", path: release }
+      - name: Verify artifact checksums
+        run: |
+          set -euo pipefail
+          cd release && sha256sum -c SHA256SUMS.txt
+      - uses: softprops/action-gh-release@v2   # pin to a commit SHA before first public release
+        with:
+          tag_name: ${{ inputs.output_prefix }}-${{ inputs.quant_type }}-v${{ inputs.model_version }}
+          name: "${{ inputs.output_prefix }}-${{ inputs.quant_type }} (v${{ inputs.model_version }})"
+          body_path: release/BUILD_INFO.txt
+          make_latest: false
+          files: |
+            release/*.bin
+            release/SHA256SUMS.txt
+            release/BUILD_INFO.txt
+            release/catalog-entry.json
+            release/vad-entry.json
+            release/MODEL_CARD.md
+            THIRD_PARTY_NOTICES.md
+```

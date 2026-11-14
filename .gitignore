@@ -1,0 +1,47 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Python environments
+.venv/
+venv/
+env/
+ENV/
+build/
+dist/
+*.egg-info/
+pip-wheel-metadata/
+pip-freeze.txt
+
+# Upstream repositories cloned during build or local runs
+whisper.cpp/
+openai-whisper/
+
+# Model downloads, conversion directories, and release artifacts
+hf_model/
+converted/
+release/
+meta/
+temp/
+tmp/
+*.partial
+SIZES.txt
+*.log
+
+# Large model binaries and checkpoints (never commit weights to git)
+*.bin
+*.safetensors
+*.pt
+*.pth
+*.onnx
+*.h5
+*.tflite
+
+# OS and Editor artifacts
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*~

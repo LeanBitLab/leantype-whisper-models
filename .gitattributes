@@ -1,0 +1,3 @@
+samples/**/expected-transcripts.txt text eol=lf
+*.wav binary
+*.bin binary

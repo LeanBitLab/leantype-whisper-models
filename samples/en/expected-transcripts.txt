@@ -1,0 +1,5 @@
+# filename.wav<TAB>expected transcript (or <silence>)
+sample-en-clean.wav	hello world
+sample-en-commands.wav	new line send message
+sample-en-noisy.wav	on my way
+sample-short-silence.wav	<silence>
