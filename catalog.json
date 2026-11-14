@@ -2,9 +2,29 @@
   "schema": 1,
   "vad": {
     "file": "ggml-silero-v5.1.2.bin",
-    "sha256": "",
-    "size_bytes": 0,
+    "revision": "9ffd54a1e1ee413ddf265af9913beaf518d1639b",
+    "sha256": "29940d98d42b91fbd05ce489f3ecf7c72f0a42f027e4875919a28fb4c04ea2cf",
+    "size_bytes": 885098,
     "bundled": true
   },
-  "models": []
+  "models": [
+    {
+      "id": "leantype-whisper-tiny.en-q5_1",
+      "version": 1,
+      "file": "leantype-whisper-tiny.en-q5_1.bin",
+      "url": "https://github.com/LeanBitLab/leantype-whisper-models/releases/download/leantype-whisper-tiny.en-q5_1-v1/leantype-whisper-tiny.en-q5_1.bin",
+      "sha256": "cc393fd5d2055d00bed6b3a67f1f3393c88e731ded80bdeea2912985179b1c9b",
+      "size_bytes": 32166155,
+      "base_model": "openai/whisper-tiny.en",
+      "model_revision": "87c7102498dcde7456f24cfd30239ca606ed9063",
+      "quant_type": "q5_1",
+      "languages": [
+        "en"
+      ],
+      "license": "apache-2.0",
+      "attribution": "",
+      "whisper_cpp_commit": "5922450fbce1ed9d1648babd0d5ac4520055b436",
+      "min_runtime_version": "1.9.5"
+    }
+  ]
 }
