@@ -69,47 +69,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p ./meta
-          python - <<'PY'
-          import json, os, pathlib, yaml
-          from huggingface_hub import snapshot_download
-          repo, rev = os.environ["MODEL_NAME"], os.environ["MODEL_REVISION"]
-          snapshot_download(
-              repo_id=repo, revision=rev, local_dir="./hf_model",
-              allow_patterns=["README.md","config.json","generation_config.json","vocab.json",
-                              "added_tokens.json","tokenizer*.json","special_tokens_map.json",
-                              "preprocessor_config.json","model.safetensors","pytorch_model.bin"],
-          )
-          p = pathlib.Path("./hf_model/README.md")
-          text = p.read_text(encoding="utf-8") if p.exists() else ""
-          parts = text.split("---", 2)
-          meta = yaml.safe_load(parts[1]) if text.startswith("---") and len(parts) >= 3 else {}
-          meta = meta if isinstance(meta, dict) else {}
-          raw = meta.get("license") or "unknown"
-          lics = [raw.lower()] if isinstance(raw, str) else [str(x).lower() for x in raw]
-
-          ALLOW = {"mit","apache-2.0","bsd-3-clause","cc0-1.0"}
-          attribution = ""
-          if len(lics) == 1 and lics[0] in ALLOW:
-              lic = lics[0]
-          else:
-              ov = json.loads(pathlib.Path("models.json").read_text()).get("overrides", {}) \
-                   if pathlib.Path("models.json").exists() else {}
-              entry = ov.get(f"{repo}@{rev}")
-              if not entry:
-                  raise SystemExit(f"FATAL: license {lics!r} requires an explicit models.json "
-                                   f"override for {repo}@{rev}")
-              lic = str(entry["license"]).lower()
-              attribution = entry.get("attribution", "").strip()
-              if "-nc" in lic:
-                  raise SystemExit(f"FATAL: non-commercial license {lic!r} is never redistributable")
-              if lic.startswith("cc-by") and not attribution:
-                  raise SystemExit("FATAL: CC-BY override requires attribution text")
-              print(f"license override applied by {entry.get('approved_by','?')}: {entry.get('rationale','')}")
-
-          pathlib.Path("./meta/license.txt").write_text(lic + "\n")
-          pathlib.Path("./meta/attribution.txt").write_text(attribution + "\n")
-          print("license:", lic)
-          PY
+          python3 ./scripts/download_and_license_gate.py
 
       - name: Build whisper.cpp
         run: |
@@ -148,20 +108,7 @@ jobs:
       - name: Metadata, checksums, catalog entry, model card
         run: |
           set -euo pipefail
-          WCPP_VER=$(python3 - <<'PY'
-import re, pathlib
-txt = pathlib.Path("whisper.cpp/CMakeLists.txt").read_text()
-m = re.search(r'project\([^)]*VERSION\s+([0-9]+\.[0-9]+\.[0-9]+)', txt)
-if m:
-    print(m.group(1))
-else:
-    maj = re.search(r'set\(WHISPER_VERSION_MAJOR\s+([0-9]+)\)', txt)
-    min_ = re.search(r'set\(WHISPER_VERSION_MINOR\s+([0-9]+)\)', txt)
-    pat = re.search(r'set\(WHISPER_VERSION_PATCH\s+([0-9]+)\)', txt)
-    if maj and min_ and pat:
-        print(f"{maj.group(1)}.{min_.group(1)}.{pat.group(1)}")
-PY
-)
+          WCPP_VER=$(python3 -c 'import re, pathlib; txt = pathlib.Path("whisper.cpp/CMakeLists.txt").read_text(); m = re.search(r"project\([^)]*VERSION\s+([0-9]+\.[0-9]+\.[0-9]+)", txt); print(m.group(1) if m else ".".join(re.search(r"set\(WHISPER_VERSION_" + k + r"\s+([0-9]+)\)", txt).group(1) for k in ["MAJOR","MINOR","PATCH"]))')
           [[ -n "$WCPP_VER" ]] || { echo "FATAL: could not determine whisper.cpp version"; exit 1; }
           WCPP_COMMIT=$(git -C whisper.cpp rev-parse HEAD)
           OPENAI_COMMIT=$(git -C openai-whisper rev-parse HEAD)
@@ -188,67 +135,7 @@ PY
             echo "--- compiler ---"; cc --version | head -n1
           } > BUILD_INFO.txt
 
-          WCPP_VER="$WCPP_VER" WCPP_COMMIT="$WCPP_COMMIT" python - <<'PY'
-          import hashlib, json, os, pathlib, textwrap
-          prefix, quant, ver = os.environ["OUTPUT_PREFIX"], os.environ["QUANT_TYPE"], os.environ["MODEL_VERSION"]
-          repo = os.environ["GITHUB_REPOSITORY"]
-          mid, name = f"{prefix}-{quant}", f"{prefix}-{quant}.bin"
-          data = pathlib.Path(name).read_bytes()
-          sha = hashlib.sha256(data).hexdigest()
-          lic = pathlib.Path("../meta/license.txt").read_text().strip()
-          attr = pathlib.Path("../meta/attribution.txt").read_text().strip()
-          wcv, wcc = os.environ["WCPP_VER"], os.environ["WCPP_COMMIT"]
-
-          entry = {
-            "id": mid, "version": int(ver), "file": name,
-            "url": f"https://github.com/{repo}/releases/download/{mid}-v{ver}/{name}",
-            "sha256": sha, "size_bytes": len(data),
-            "base_model": os.environ["MODEL_NAME"],
-            "model_revision": os.environ["MODEL_REVISION"],
-            "quant_type": quant,
-            "languages": os.environ["MODEL_LANGS"].split(","),
-            "license": lic, "attribution": attr,
-            "whisper_cpp_commit": wcc,
-            "min_runtime_version": wcv,
-          }
-          pathlib.Path("catalog-entry.json").write_text(json.dumps(entry, indent=2) + "\n")
-
-          v = pathlib.Path("../ggml-silero-v5.1.2.bin").read_bytes()
-          pathlib.Path("vad-entry.json").write_text(json.dumps({
-            "file": "ggml-silero-v5.1.2.bin",
-            "revision": os.environ["VAD_REVISION"],
-            "sha256": hashlib.sha256(v).hexdigest(),
-            "size_bytes": len(v), "bundled": True,
-          }, indent=2) + "\n")
-
-          bpath = pathlib.Path(f"../bench/{mid}.json")
-          b = json.loads(bpath.read_text()) if bpath.exists() else {}
-          g = lambda k: b.get(k, "PENDING (device bench)")
-          card = textwrap.dedent(f"""\
-          # Model Card: `{name}`
-
-          - **Model ID:** `{mid}` (v{ver})
-          - **Base Model:** `{entry['base_model']}` (`{entry['model_revision']}`)
-          - **Quantization:** `{quant}`
-          - **Size:** {len(data):,} bytes ({len(data)/(1024*1024):.1f} MiB)
-          - **SHA-256:** `{sha}`
-          - **Languages:** {", ".join(entry['languages'])}
-          - **License:** `{lic}` (verified from the pinned upstream model card)
-          - **Built with whisper.cpp:** `{wcv}` (`{wcc}`)
-          - **Minimum Runtime Version:** `{wcv}`
-          - **Intended Use:** Offline voice typing in LeanType (`:voice` isolated process).
-
-          ## Attribution
-          {attr or "Upstream OpenAI Whisper weights (MIT); see THIRD_PARTY_NOTICES.md."}
-
-          ## Device Benchmarks
-          - **Peak Private_Dirty RAM:** {g('peak_private_dirty_kb')} kB
-          - **Cold Load Time:** {g('cold_load_ms')} ms
-          - **RTF:** {g('rtf')}
-          - **Device / SoC / threads:** {g('device')} / {g('soc')} / {g('threads')}
-          """)
-          pathlib.Path("MODEL_CARD.md").write_text(card)
-          PY
+          WCPP_VER="$WCPP_VER" WCPP_COMMIT="$WCPP_COMMIT" python3 ../scripts/generate_catalog_entry.py
 
       - uses: actions/upload-artifact@v4
         with:
