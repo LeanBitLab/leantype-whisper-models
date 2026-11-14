@@ -1,0 +1,89 @@
+name: Check Upstream whisper.cpp Updates
+
+on:
+  schedule:
+    - cron: "0 4 * * 1"  # Every Monday at 04:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: write
+
+jobs:
+  check-upstream:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check latest whisper.cpp release
+        id: check_wcpp
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          CURRENT_VER=$(python3 -c 'import json; print(json.load(open("upstream-versions.json"))["whisper_cpp"]["version"])')
+          CURRENT_COMMIT=$(python3 -c 'import json; print(json.load(open("upstream-versions.json"))["whisper_cpp"]["commit"])')
+          echo "Current pinned whisper.cpp version: $CURRENT_VER ($CURRENT_COMMIT)"
+
+          LATEST_JSON=$(gh api repos/ggerganov/whisper.cpp/releases/latest)
+          LATEST_TAG=$(echo "$LATEST_JSON" | jq -r .tag_name)
+          LATEST_VER="${LATEST_TAG#v}"
+          HTML_URL=$(echo "$LATEST_JSON" | jq -r .html_url)
+
+          echo "Latest upstream whisper.cpp release: $LATEST_VER ($HTML_URL)"
+
+          if [ "$CURRENT_VER" != "$LATEST_VER" ]; then
+            echo "new_release_detected=true" >> "$GITHUB_OUTPUT"
+            echo "current_version=$CURRENT_VER" >> "$GITHUB_OUTPUT"
+            echo "latest_version=$LATEST_VER" >> "$GITHUB_OUTPUT"
+            echo "latest_tag=$LATEST_TAG" >> "$GITHUB_OUTPUT"
+            echo "release_url=$HTML_URL" >> "$GITHUB_OUTPUT"
+
+            TAG_COMMIT=$(gh api "repos/ggerganov/whisper.cpp/commits/$LATEST_TAG" --jq .sha)
+            echo "latest_commit=$TAG_COMMIT" >> "$GITHUB_OUTPUT"
+          else
+            echo "new_release_detected=false" >> "$GITHUB_OUTPUT"
+            echo "Up to date with latest upstream release."
+          fi
+
+      - name: Open tracking issue if new release detected
+        if: steps.check_wcpp.outputs.new_release_detected == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CURRENT_VER: ${{ steps.check_wcpp.outputs.current_version }}
+          LATEST_VER: ${{ steps.check_wcpp.outputs.latest_version }}
+          LATEST_TAG: ${{ steps.check_wcpp.outputs.latest_tag }}
+          LATEST_COMMIT: ${{ steps.check_wcpp.outputs.latest_commit }}
+          RELEASE_URL: ${{ steps.check_wcpp.outputs.release_url }}
+        run: |
+          set -euo pipefail
+
+          EXISTING_ISSUE=$(gh issue list --repo "${{ github.repository }}" \
+            --state open \
+            --search "whisper.cpp ${LATEST_VER} update available" \
+            --json number -q '.[0].number')
+
+          if [ -n "$EXISTING_ISSUE" ]; then
+            echo "Tracking issue #$EXISTING_ISSUE already open for $LATEST_VER. Skipping."
+            exit 0
+          fi
+
+          ISSUE_BODY=$(cat <<EOF
+          ## Upstream whisper.cpp Update Available
+
+          A new release of **whisper.cpp** was detected:
+          - **Current Pinned Version:** \`${CURRENT_VER}\`
+          - **New Upstream Version:** \`${LATEST_VER}\` (\`${LATEST_TAG}\`)
+          - **Commit SHA:** \`${LATEST_COMMIT}\`
+          - **Release Notes:** [${LATEST_TAG}](${RELEASE_URL})
+
+          ### Next Steps:
+          1. Verify if upstream contains breaking changes to GGML quant formats or tensor headers.
+          2. Run a test conversion with \`publish_release=false\` using \`whisper_cpp_ref=${LATEST_COMMIT}\`.
+          3. If all verification tests pass, update \`upstream-versions.json\` and publish the next model version.
+          EOF
+          )
+
+          gh issue create --repo "${{ github.repository }}" \
+            --title "chore(upstream): whisper.cpp ${LATEST_VER} update available" \
+            --body "$ISSUE_BODY"

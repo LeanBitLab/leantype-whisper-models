@@ -1,0 +1,9 @@
+{
+  "whisper_cpp": {
+    "version": "1.9.5",
+    "commit": "5922450fbce1ed9d1648babd0d5ac4520055b436"
+  },
+  "openai_whisper": {
+    "commit": "ba3f3cd54b0e5b8ce1ab3de13e32122d0d5f98ab"
+  }
+}
