@@ -82,4 +82,60 @@ card = textwrap.dedent(f"""\
 - **Device / SoC / threads:** {get_bench('device')} / {get_bench('soc')} / {get_bench('threads')}
 """)
 pathlib.Path("MODEL_CARD.md").write_text(card)
-print(f"Generated catalog-entry.json, vad-entry.json, and MODEL_CARD.md for {mid}")
+
+is_multilingual = (
+    len(entry["languages"]) > 1
+    or entry["languages"] == ["mul"]
+    or "multilingual" in mid
+    or not entry["base_model"].split("/")[-1].endswith(".en")
+)
+langs_desc = "99 languages (Multilingual)" if is_multilingual else ", ".join(entry["languages"])
+
+notes = textwrap.dedent(f"""\
+# LeanType Whisper Model: `{mid}` (v{ver})
+
+Compact, quantized offline Whisper model optimized for mobile ARM devices running LeanType.
+
+### Highlights
+- **Architecture & Precision:** `{entry['base_model']}` quantized to `{quant}` for fast inference with ARM NEON / dotprod hardware vector acceleration.
+- **Languages:** {langs_desc}.
+- **Size:** {len(data):,} bytes ({len(data)/(1024*1024):.1f} MiB).
+
+---
+
+### Specifications & Integrity
+- **Model File:** `{name}`
+- **SHA-256:** `{sha}`
+- **Upstream Base Model:** `{entry['base_model']}` (`{entry['model_revision']}`)
+- **License:** `{lic}`
+- **Runtime Requirement:** LeanType Voice Plugin v1.0.3+ (whisper.cpp {wcv})
+
+---
+
+### On-Device Hardware Benchmarks
+- **Cold Load Time:** {get_bench('cold_load_ms')} ms
+- **Peak RAM (Private Dirty):** {get_bench('peak_private_dirty_kb')} kB
+- **Real-Time Factor (RTF):** {get_bench('rtf')}
+- **Test Hardware:** {get_bench('device')} ({get_bench('soc')}, {get_bench('threads')} threads)
+
+---
+
+### How to Install in LeanType
+1. **Via Settings (Recommended):** Open LeanType Settings > Voice input > Download or manage Whisper models.
+2. **Manual Import:**
+   - Download `{name}` from Assets below.
+   - Open LeanType Settings > Voice input > Download or manage Whisper models.
+   - Under "Custom Local Model", tap **Import** and select the downloaded file.
+
+---
+
+### Release Assets
+- `{name}`: Quantized model binary for on-device inference.
+- `SHA256SUMS.txt`: Cryptographic checksums.
+- `catalog-entry.json`: Metadata definition for LeanType model catalog.
+- `MODEL_CARD.md`: Detailed model documentation and parameter details.
+- `BUILD_INFO.txt`: Compiler environment and Python lockfile for build reproducibility.
+- `THIRD_PARTY_NOTICES.md`: Upstream open-source license notices.
+""")
+pathlib.Path("RELEASE_NOTES.md").write_text(notes)
+print(f"Generated catalog-entry.json, vad-entry.json, MODEL_CARD.md, and RELEASE_NOTES.md for {mid}")

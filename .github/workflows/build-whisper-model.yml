@@ -147,6 +147,7 @@ jobs:
             release/catalog-entry.json
             release/vad-entry.json
             release/MODEL_CARD.md
+            release/RELEASE_NOTES.md
 
   publish:
     needs: build
@@ -171,7 +172,7 @@ jobs:
         with:
           tag_name: ${{ inputs.output_prefix }}-${{ inputs.quant_type }}-v${{ inputs.model_version }}
           name: "${{ inputs.output_prefix }}-${{ inputs.quant_type }} (v${{ inputs.model_version }})"
-          body_path: release/BUILD_INFO.txt
+          body_path: release/RELEASE_NOTES.md
           make_latest: false
           files: |
             release/*.bin
