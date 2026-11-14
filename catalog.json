@@ -46,6 +46,24 @@
       "min_runtime_version": "1.9.5"
     },
     {
+      "id": "leantype-whisper-base.en-q5_1",
+      "version": 1,
+      "file": "leantype-whisper-base.en-q5_1.bin",
+      "url": "https://github.com/LeanBitLab/leantype-whisper-models/releases/download/v1.0.0/leantype-whisper-base.en-q5_1.bin",
+      "sha256": "121e76ad8f95c9b7dcfe0295527423d2523beee7b50d9679782fc907a7f0b3de",
+      "size_bytes": 59721011,
+      "base_model": "openai/whisper-base.en",
+      "model_revision": "911407f4214e0e1d82085af863093ec0b66f9cd6",
+      "quant_type": "q5_1",
+      "languages": [
+        "en"
+      ],
+      "license": "apache-2.0",
+      "attribution": "",
+      "whisper_cpp_commit": "5922450fbce1ed9d1648babd0d5ac4520055b436",
+      "min_runtime_version": "1.9.5"
+    },
+    {
       "id": "leantype-whisper-base-q5_1",
       "version": 1,
       "file": "leantype-whisper-base-q5_1.bin",
@@ -54,6 +72,43 @@
       "size_bytes": 59707642,
       "base_model": "openai/whisper-base",
       "model_revision": "e37978b90ca9030d5170a5c07aadb050351a65bb",
+      "quant_type": "q5_1",
+      "languages": [
+        "en",
+        "mul"
+      ],
+      "license": "apache-2.0",
+      "attribution": "",
+      "whisper_cpp_commit": "5922450fbce1ed9d1648babd0d5ac4520055b436",
+      "min_runtime_version": "1.9.5"
+    },
+    {
+      "id": "leantype-whisper-small.en-q5_1",
+      "version": 1,
+      "file": "leantype-whisper-small.en-q5_1.bin",
+      "url": "https://github.com/LeanBitLab/leantype-whisper-models/releases/download/v1.0.0/leantype-whisper-small.en-q5_1.bin",
+      "sha256": "29800b2e0d75721e8a0dd04f9dc5a7054661cf866e8578e0d980128f62de3ebd",
+      "size_bytes": 190098681,
+      "base_model": "openai/whisper-small.en",
+      "model_revision": "e8727524f962ee844a7319d92be39ac1bd25655a",
+      "quant_type": "q5_1",
+      "languages": [
+        "en"
+      ],
+      "license": "apache-2.0",
+      "attribution": "",
+      "whisper_cpp_commit": "5922450fbce1ed9d1648babd0d5ac4520055b436",
+      "min_runtime_version": "1.9.5"
+    },
+    {
+      "id": "leantype-whisper-small-q5_1",
+      "version": 1,
+      "file": "leantype-whisper-small-q5_1.bin",
+      "url": "https://github.com/LeanBitLab/leantype-whisper-models/releases/download/v1.0.0/leantype-whisper-small-q5_1.bin",
+      "sha256": "a91fdf80f97a66b22dabe567d2be9f195285ea6de2e9b2e73f80eb5a6aa627d0",
+      "size_bytes": 190085504,
+      "base_model": "openai/whisper-small",
+      "model_revision": "973afd24965f72e36ca33b3055d56a652f456b4d",
       "quant_type": "q5_1",
       "languages": [
         "en",

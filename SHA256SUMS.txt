@@ -1,0 +1,6 @@
+cc393fd5d2055d00bed6b3a67f1f3393c88e731ded80bdeea2912985179b1c9b  leantype-whisper-tiny.en-q5_1.bin
+2fc2aa8e079b64dcab60dfd0d7bea8b9e18235ebc5137cb5ba0280adf6473b06  leantype-whisper-tiny-q5_1.bin
+121e76ad8f95c9b7dcfe0295527423d2523beee7b50d9679782fc907a7f0b3de  leantype-whisper-base.en-q5_1.bin
+36a6bf6281261fec331fcc65235e0f466d855ea4dae1bbbfb28ed4c0cf72d8c0  leantype-whisper-base-q5_1.bin
+29800b2e0d75721e8a0dd04f9dc5a7054661cf866e8578e0d980128f62de3ebd  leantype-whisper-small.en-q5_1.bin
+a91fdf80f97a66b22dabe567d2be9f195285ea6de2e9b2e73f80eb5a6aa627d0  leantype-whisper-small-q5_1.bin
