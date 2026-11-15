@@ -29,8 +29,19 @@ done < "$SAMPLES/expected-transcripts.txt"
 
 HAS_F16=$([[ -n "$F16" ]] && echo 1 || echo 0) python3 - \
   "$SAMPLES/expected-transcripts.txt" "$WORK/quant" "$WORK/f16" <<'PY'
-import os, re, sys, pathlib
+import array, math, os, re, sys, pathlib, wave
 exp_file, qdir, fdir = sys.argv[1], sys.argv[2], sys.argv[3]
+samples_dir = pathlib.Path(exp_file).parent
+# absolute ceiling for the quantized model, so that the gate does not only compare with f16
+max_wer = float(os.environ.get("MAX_WER", "0.30"))
+# a speech clip with less energy than this (16 bit samples) is silence, not a test of the model
+MIN_SPEECH_RMS = 100
+
+def rms(path):
+    with wave.open(str(path)) as w:
+        a = array.array("h")
+        a.frombytes(w.readframes(w.getnframes()))
+    return math.sqrt(sum(v * v for v in a) / max(len(a), 1))
 if os.environ.get("HAS_F16") != "1":
     fdir = None
 
@@ -60,6 +71,9 @@ for line in pathlib.Path(exp_file).read_text().splitlines():
         if qt: fail.append(f"{wav}: silence produced {qt!r} (must be empty)")
         print(f"[silence] {wav}: {'OK' if not qt else 'FAIL'}")
         continue
+    clip_rms = rms(samples_dir / wav)
+    if clip_rms < MIN_SPEECH_RMS:
+        fail.append(f"{wav}: clip has no audio (rms {clip_rms:.1f}), it cannot test the model"); continue
     e, n = wer(norm(exp), norm(qt)); qe += e; qn += n
     print(f"[quant] {wav}: {qt!r} ({e}/{n})")
     if fdir:
@@ -68,8 +82,12 @@ for line in pathlib.Path(exp_file).read_text().splitlines():
             fail.append(f"{wav}: no f16 transcript produced"); continue
         e2, n2 = wer(norm(exp), norm(f.read_text().strip())); fe += e2; fn += n2
 
+if qn == 0:
+    fail.append("no speech clip was scored")
 qwer = qe / (qn or 1)
-print(f"quant WER = {qwer:.3f}")
+print(f"quant WER = {qwer:.3f} (max {max_wer:.2f})")
+if qn and qwer > max_wer:
+    fail.append(f"quant WER {qwer:.3f} is above {max_wer:.2f}")
 if fdir and fn:
     fwer = fe / fn
     print(f"f16 WER   = {fwer:.3f}  delta = {qwer - fwer:+.3f}")

@@ -1,5 +1,5 @@
 # filename.wav<TAB>expected transcript (or <silence>)
-sample-en-clean.wav	hello world
-sample-en-commands.wav	new line send message
-sample-en-noisy.wav	on my way
+sample-en-clean.wav	and so my fellow americans ask not what your country can do for you ask what you can do for your country
+sample-en-short.wav	and so my fellow americans
+sample-en-noisy.wav	and so my fellow americans ask not what your country can do for you ask what you can do for your country
 sample-short-silence.wav	<silence>

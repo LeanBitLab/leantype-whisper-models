@@ -56,7 +56,7 @@ leantype-whisper-models/
 │   ├── README.md                   # per-clip provenance + license
 │   └── en/
 │       ├── sample-en-clean.wav
-│       ├── sample-en-commands.wav
+│       ├── sample-en-short.wav
 │       ├── sample-en-noisy.wav
 │       ├── sample-short-silence.wav
 │       └── expected-transcripts.txt
@@ -95,9 +95,9 @@ trim_trailing_whitespace = false
 
 ```text
 # filename.wav<TAB>expected transcript (or <silence>)
-sample-en-clean.wav    hello world
-sample-en-commands.wav    new line send message
-sample-en-noisy.wav    on my way
+sample-en-clean.wav    and so my fellow americans ask not what your country can do for you ask what you can do for your country
+sample-en-short.wav    and so my fellow americans
+sample-en-noisy.wav    and so my fellow americans ask not what your country can do for you ask what you can do for your country
 sample-short-silence.wav    <silence>
 ```
 
@@ -609,7 +609,7 @@ wparams.vad_model_path  = vadPath;
 
 | Gate              | When                                | Criteria                                                                 |
 | ----------------- | ----------------------------------- | ------------------------------------------------------------------------ |
-| 4-clip regression | every build                         | transcripts present, quant WER ≤ f16 + 5 pts, silence empty, VAD enabled |
+| 4-clip regression | every build                         | speech clips have audio, quant WER ≤ 0.30 (`MAX_WER`) and ≤ f16 + 5 pts, silence empty, VAD enabled |
 | 200-clip WER      | nightly + dispatch                  | quant ≤ f16 + 1.0 absolute; per-language table archived                  |
 | Device bench      | before publish                      | `bench/<id>.json` present; fills the model card                          |
 | Reproducibility   | on `whisper_cpp_ref` bump / monthly | build twice, diff SHA-256                                                |
