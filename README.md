@@ -57,7 +57,7 @@ sha256sum --ignore-missing -c SHA256SUMS.txt
 Upstream binaries on Hugging Face are opaque files without an auditable build. Building them here gives:
 - **Verifiable provenance:** pinned commits for `whisper.cpp`, `openai/whisper` and the Hugging Face model revisions, recorded per model in `catalog.json`.
 - **Fail-closed licensing:** the upstream model card license is checked before the build, and non-commercial (`-nc`) licenses are always rejected.
-- **Quality gates:** automated inference tests on four clips (word error rate against the f16 model, and silence must decode to nothing) on every build.
+- **Quality gates:** automated inference tests on every build with four clips (real speech clean, short and noisy, plus silence): the clips must contain audio, the word error rate must stay at or below 30% and within 5 points of the f16 model, and silence must decode to nothing.
 - **Device gating:** a recorded on-device benchmark is required before a release can be published.
 - **Integrity:** SHA-256 checksums and exact byte sizes are published in `catalog.json` and `SHA256SUMS.txt`.
 
@@ -78,8 +78,8 @@ leantype-whisper-models/
 ├── catalog.json                         # single source of truth consumed by LeanType
 ├── models.json                          # per-model license overrides and attributions
 ├── docs/MODEL_CARD_TEMPLATE.md
-├── samples/                             # test clips and expected transcripts for the quality gates
-├── scripts/                             # convert, quantize, validate and benchmark scripts
+├── samples/                             # speech clips and expected transcripts for the quality gates
+├── scripts/                             # convert, quantize, validate, benchmark and sample scripts
 ├── requirements.txt / requirements.lock.txt
 ├── SHA256SUMS.txt
 ├── THIRD_PARTY_NOTICES.md
