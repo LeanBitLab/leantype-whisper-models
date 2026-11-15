@@ -34,7 +34,7 @@ Choosing a model:
 2. In LeanType open **Settings → Plugins → Voice Input → Whisper Models**.
 3. **Standard flavor**: tap a model to download it. **Offline flavor**: download the `.bin` here in your browser, then tap **Import** on **Custom GGML Model**.
 
-LeanType checks the size and SHA-256 of every download against [`catalog.json`](catalog.json).
+The SHA-256 and exact size of every model are published in [`catalog.json`](catalog.json) and `SHA256SUMS.txt`. LeanType keeps its own list of the models and does not verify downloads against these checksums yet, so to check a file you downloaded, compare it as shown below.
 
 ## Verify a download
 
